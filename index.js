@@ -185,10 +185,40 @@ async function downloadVideo(userId, url) {
     );
 
     const videoUrl = response.data?.data?.play;
+    const musicUrl = response.data?.data?.music;
 
-    if (videoUrl) {
-      await bot.telegram.sendVideo(userId, videoUrl);
+    if (!videoUrl) {
+      return bot.telegram.sendMessage(
+        userId,
+        "❌ تعذر تحميل الرابط."
+      );
     }
+
+    await redis.set(
+      `media:${userId}`,
+      JSON.stringify({
+        videoUrl,
+        musicUrl
+      }),
+      "EX",
+      600
+    );
+
+    await bot.telegram.sendMessage(
+      userId,
+      "اختر نوع التحميل:",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [
+              { text: "🎬 فيديو", callback_data: "video" },
+              { text: "🎵 صوت", callback_data: "audio" }
+            ]
+          ]
+        }
+      }
+    );
+
   } catch (e) {
     console.log(e.message);
   }
@@ -277,7 +307,38 @@ app.get("/activate-from-message", async (req, res) => {
 
   res.send("ok");
 });
+bot.action("video", async (ctx) => {
+  const userId = ctx.from.id;
 
+  const media = await redis.get(`media:${userId}`);
+
+  if (!media) {
+    return ctx.answerCbQuery("انتهت صلاحية الرابط");
+  }
+
+  const { videoUrl } = JSON.parse(media);
+
+  await ctx.answerCbQuery();
+  await bot.telegram.sendVideo(userId, videoUrl);
+});
+
+bot.action("audio", async (ctx) => {
+  const userId = ctx.from.id;
+
+  const media = await redis.get(`media:${userId}`);
+
+  if (!media) {
+    return ctx.answerCbQuery("انتهت صلاحية الرابط");
+  }
+
+  const { musicUrl } = JSON.parse(media);
+
+  await ctx.answerCbQuery();
+
+  if (musicUrl) {
+    await bot.telegram.sendAudio(userId, musicUrl);
+  }
+});
 // =========================
 // Webhook
 // =========================

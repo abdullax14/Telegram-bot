@@ -23,6 +23,36 @@ const REF_BONUS = 10 * 60;   // 10 دقائق لكل دعوة
 const DAILY_LIMIT = 10;      // حد يومي للدعوات
 const ADMIN_ID = 8287143547;
 
+function getLang(ctx) {
+  const lang = ctx.from?.language_code || "en";
+  return lang.startsWith("ar") ? "ar" : "en";
+}
+
+const TEXTS = {
+  ar: {
+    start: "👇 اضغط على زر تحميل الفيديو لفتح الصفحة",
+    invalidLink: "ارسل رابط تيك توك صحيح.",
+    watchAd: "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
+    chooseType: "اختر نوع التحميل:",
+    expired: "انتهت صلاحية الرابط",
+    downloadBtn: "تحميل الفيديو",
+    watchAdBtn: "🎥 مشاهدة الإعلان",
+    videoBtn: "🎬 فيديو",
+    audioBtn: "🎵 صوت"
+  },
+
+  en: {
+    start: "👇 Press the button below to open the downloader",
+    invalidLink: "Please send a valid TikTok link.",
+    watchAd: "🔔 Watch a short ad to continue downloading.",
+    chooseType: "Choose download type:",
+    expired: "Link expired",
+    downloadBtn: "Download Video",
+    watchAdBtn: "🎥 Watch Ad",
+    videoBtn: "🎬 Video",
+    audioBtn: "🎵 Audio"
+  }
+};
 // =========================
 // 📊 الإحصائيات
 // =========================
@@ -119,11 +149,11 @@ bot.start(async (ctx) => {
       }
     }
   }
-
-  ctx.reply("👇 اضغط على زر تحميل الفيديو لفتح الصفحة", {
+  const lang = getLang(ctx);
+  ctx.reply(TEXTS[lang].start, {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "تحميل الفيديو", web_app: { url: `${BASE_URL}/app` } }]
+        [{ text: TEXTS[lang].downloadBtn, web_app: { url: `${BASE_URL}/app` } }]
       ]
     }
   });
@@ -138,11 +168,11 @@ bot.on("text", async (ctx) => {
 
   const userId = ctx.from.id;
   const text = ctx.message.text;
-
+  const lang = getLang(ctx);
   await redis.sadd("users", userId);
 
   if (!text.includes("tiktok.com")) {
-    return ctx.reply("ارسل رابط تيك توك صحيح.");
+    return ctx.reply(TEXTS[lang].invalidLink);
   }
 
   const hasAccess = await redis.get(`session:${userId}`);
@@ -152,11 +182,11 @@ bot.on("text", async (ctx) => {
   }
 
   const msg = await ctx.reply(
-    "🔔 لمتابعة التحميل يرجى مشاهدة إعلان قصير.",
+    TEXTS[lang].watchAd,
     {
       reply_markup: {
         inline_keyboard: [
-          [{ text: "🎥 مشاهدة الإعلان", web_app: { url: `${BASE_URL}/ad` } }]
+          [{ text: TEXTS[lang].watchAdBtn, web_app: { url: `${BASE_URL}/ad` } }]
         ]
       }
     }
@@ -178,6 +208,8 @@ bot.on("text", async (ctx) => {
 // =========================
 
 async function downloadVideo(userId, url) {
+  const chat = await bot.telegram.getChat(userId);
+const lang = chat.language_code?.startsWith("ar") ? "ar" : "en";
   try {
     const response = await axios.get(
       `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
@@ -206,13 +238,13 @@ async function downloadVideo(userId, url) {
 
     await bot.telegram.sendMessage(
       userId,
-      "اختر نوع التحميل:",
+      TEXTS[lang].chooseType,
       {
         reply_markup: {
           inline_keyboard: [
             [
-              { text: "🎬 فيديو", callback_data: "video" },
-              { text: "🎵 صوت", callback_data: "audio" }
+              { text: TEXTS[lang].videoBtn, callback_data: "video" },
+{ text: TEXTS[lang].audioBtn, callback_data: "audio" }
             ]
           ]
         }
@@ -313,7 +345,8 @@ bot.action("video", async (ctx) => {
   const media = await redis.get(`media:${userId}`);
 
   if (!media) {
-    return ctx.answerCbQuery("انتهت صلاحية الرابط");
+    const lang = getLang(ctx);
+return ctx.answerCbQuery(TEXTS[lang].expired);
   }
 
   const { videoUrl } = JSON.parse(media);
@@ -328,7 +361,8 @@ bot.action("audio", async (ctx) => {
   const media = await redis.get(`media:${userId}`);
 
   if (!media) {
-    return ctx.answerCbQuery("انتهت صلاحية الرابط");
+    const lang = getLang(ctx);
+return ctx.answerCbQuery(TEXTS[lang].expired);
   }
 
   const { musicUrl } = JSON.parse(media);

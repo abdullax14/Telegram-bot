@@ -150,6 +150,7 @@ bot.start(async (ctx) => {
     }
   }
   const lang = getLang(ctx);
+  await redis.set(`lang:${userId}`, lang, "EX", 86400);
   ctx.reply(TEXTS[lang].start, {
     reply_markup: {
       inline_keyboard: [
@@ -167,9 +168,10 @@ bot.on("text", async (ctx) => {
   if (ctx.message.text.startsWith("/")) return;
 
   const userId = ctx.from.id;
-  const text = ctx.message.text;
-  const lang = getLang(ctx);
-  await redis.sadd("users", userId);
+const text = ctx.message.text;
+const lang = getLang(ctx);
+
+await redis.set(`lang:${userId}`, lang, "EX", 86400);
 
   if (!text.includes("tiktok.com")) {
     return ctx.reply(TEXTS[lang].invalidLink);
@@ -208,8 +210,7 @@ bot.on("text", async (ctx) => {
 // =========================
 
 async function downloadVideo(userId, url) {
-  const chat = await bot.telegram.getChat(userId);
-const lang = chat.language_code?.startsWith("ar") ? "ar" : "en";
+  const lang = await redis.get(`lang:${userId}`) || "en";
   try {
     const response = await axios.get(
       `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`,
@@ -324,19 +325,32 @@ app.get("/direct-download", async (req, res) => {
 app.get("/activate-from-message", async (req, res) => {
   const userId = Number(req.query.user_id);
   if (!userId) return res.send("error");
-
+  const lang = await redis.get(`lang:${userId}`) || "en";
   await redis.set(`session:${userId}`, "1", "EX", FREE_PERIOD);
 
   const referralLink = `https://t.me/ViroTik_bot?start=${userId}`;
 
-  await bot.telegram.sendMessage(
-    userId,
-    `🎉 لديك حماية 30 دقيقة!\n\n` +
-    `🚀 كل دعوة = 10 دقائق (حد يومي 10 دعوات)\n` +
-    `استخدم /bonus لرصيدك\n` +
-    `${referralLink}`
-  ).catch(()=>{});
+  const protectionMsg =
+  lang === "ar"
+    ? `🎉 لديك حماية 30 دقيقة!\n\n🚀 كل دعوة = 10 دقائق (حد يومي 10 دعوات)\nاستخدم /bonus لرصيدك\n${referralLink}`
+    : `🎉 You have 30 minutes of access!\n\n🚀 Each referral gives 10 minutes (daily limit: 10)\nUse /bonus to view your balance\n${referralLink}`;
+ 
+await bot.telegram.sendMessage(
+  userId,
+  protectionMsg
+).catch(()=>{});
+const pending = await redis.get(`pending:${userId}`);
 
+if (pending) {
+  const data = JSON.parse(pending);
+
+  await downloadVideo(
+    userId,
+    data.url
+  );
+
+  await redis.del(`pending:${userId}`);
+}
   res.send("ok");
 });
 bot.action("video", async (ctx) => {
